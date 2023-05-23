@@ -1,0 +1,17 @@
+Till Now we were creating Plan by passing below 2 vars on command line:
+
+terraform plan -out main.tfplan -var="number_of_subnets=3" -var="number_of_machines=3"
+
+There is another Approach to do this:
+1. create a file "terraform.tfvars"
+2. And define these 2 vars in that file.
+
+terraform.tfvars
+================
+number_of_subnets=3
+number_of_machines=3
+
+So then while running terraform plan command no need to pass vars on command line, terraform will pick it up from
+terraform.tfvars file.
+So, just need to run:
+terraform plan -out main.tfplan
