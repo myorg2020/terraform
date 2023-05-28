@@ -1,0 +1,12 @@
+
+export TF_LOG="DEBUG"
+export TF_LOG_PATH="/tmp/terraform.log"
+
+when we run "terraform plan" it goes to azure and compare the states and shows lots of logs and data.
+So to Refer these logs for debug purpose set above as Env var. if want to add globally as in your bashrc.
+
+And then run "terraform plan". you will see it stores now log data in file /tmp/terraform.log
+
+- If there is any Error coming while running "terraform apply" i.e. while creating resources.
+go to Azure Portal -> Monitor (Service) -> check "Activity log"
+All the operations done in Azure Portal will have under Activity Log. This is best way to check for any Error Logs.

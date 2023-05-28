@@ -1,0 +1,275 @@
+
+Once VM is created,Access VM to it's public IP from browser:
+
+public-IP/Default.html
+
+
+copyfiles.tf
+============
+resource "null_resource" "addfiles" {
+    provisioner "file" {
+        source="/Users/amiteshranjan/terraform-on-azure/Default.html"
+        destination = "/var/www/html/Default.html"
+
+        connection {
+          type="ssh"
+          user="linuxusr"
+          private_key = file("${local_file.linuxpemkey.filename}")
+          host = "${azurerm_public_ip.appip.ip_address}"
+        }
+
+    }
+    depends_on = [
+        local_file.linuxpemkey,
+        azurerm_linux_virtual_machine.linuxvm
+     ]
+}
+
+Default.html
+=============
+<h1>This is our home page</h1>
+
+locals.tf
+=========
+locals {
+  resource_group_name="app-grp"
+  location="Central India"
+  virtual_network={
+    name="app-network"
+    address_space="10.0.0.0/16"
+  }
+
+  subnets=[
+    {
+      name="subnetA"
+      address_prefix="10.0.0.0/24"
+    },
+    {
+      name="subnetB"
+      address_prefix="10.0.1.0/24"
+    }
+  ]
+}
+
+
+main.tf
+========
+resource "azurerm_resource_group" "appgrp" {
+  name     = local.resource_group_name
+  location = local.location
+}
+
+
+networking.tf
+==============
+resource "azurerm_virtual_network" "appnetwork" {
+  name                = local.virtual_network.name
+  location            = local.location
+  resource_group_name = local.resource_group_name
+  address_space       = [local.virtual_network.address_space]
+
+   depends_on = [
+     azurerm_resource_group.appgrp
+   ]
+  }
+
+
+  resource "azurerm_subnet" "subnetA" {
+  name                 = local.subnets[0].name
+  resource_group_name  = local.resource_group_name
+  virtual_network_name = local.virtual_network.name
+  address_prefixes     = [local.subnets[0].address_prefix]
+  depends_on = [
+    azurerm_virtual_network.appnetwork
+  ]
+}
+
+resource "azurerm_subnet" "subnetB" {
+  name                 = local.subnets[1].name
+  resource_group_name  = local.resource_group_name
+  virtual_network_name = local.virtual_network.name
+  address_prefixes     = [local.subnets[1].address_prefix]
+  depends_on = [
+    azurerm_virtual_network.appnetwork
+  ]
+}
+
+resource "azurerm_network_interface" "appinterface" {
+  name                = "appinterface"
+  location            = local.location
+  resource_group_name = local.resource_group_name
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.subnetA.id
+    private_ip_address_allocation = "Dynamic"
+    public_ip_address_id = azurerm_public_ip.appip.id
+  }
+  depends_on = [
+    azurerm_subnet.subnetA
+  ]
+}
+
+resource "azurerm_public_ip" "appip" {
+  name                = "app-ip"
+  resource_group_name = local.resource_group_name
+  location            = local.location
+  allocation_method   = "Static"
+ depends_on = [
+   azurerm_resource_group.appgrp
+ ]
+}
+
+resource "azurerm_network_security_group" "appnsg" {
+  name                = "app-nsg"
+  location            = local.location
+  resource_group_name = local.resource_group_name
+
+  security_rule {
+    name                       = "AllowSSH"
+    priority                   = 300
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "22"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "AllowHTTP"
+    priority                   = 400
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "80"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  depends_on = [
+    azurerm_resource_group.appgrp
+  ]
+}
+
+resource "azurerm_subnet_network_security_group_association" "appnsglink" {
+  subnet_id                 = azurerm_subnet.subnetA.id
+  network_security_group_id = azurerm_network_security_group.appnsg.id
+}
+
+
+provider.tf
+===========
+terraform {
+  required_providers {
+    azurerm = {
+      source = "hashicorp/azurerm"
+      version = "3.57.0"
+    }
+  }
+}
+
+provider "azurerm" {
+  subscription_id = "e3ee3ee2-119e-453a-a958-b8e385c680e0"
+  tenant_id = "4238699a-f505-4d45-8c2c-121606c75ffd"
+  client_id = "2d2e1929-6f85-4c8a-802e-2f619d741d2f"
+  client_secret = "Bqu8Q~MAz-NXKMn6gjhco-rgEig-7DAXkLNGlcgu"
+  features {}
+}
+
+
+script.html
+===========
+#cloud-config
+package_upgrade: true
+packages:
+  - nginx
+runcmd:
+  - cd /var/www
+  - sudo chmod 0757 html
+
+virtualmachine.tf
+=================
+resource "tls_private_key" "linuxkey" {
+  algorithm = "RSA"
+  rsa_bits  = 4096
+}
+
+resource "local_file" "linuxpemkey"{
+  filename = "linuxkey.pem"
+  content=tls_private_key.linuxkey.private_key_pem
+  depends_on = [
+    tls_private_key.linuxkey
+  ]
+}
+
+data "template_file" "cloudinitdata" {
+    template = file("script.sh")
+}
+
+resource "azurerm_linux_virtual_machine" "linuxvm" {
+  name                = "linuxvm"
+  resource_group_name = local.resource_group_name
+  location            = local.location
+  size                = "Standard_D2s_v3"
+  admin_username      = "linuxusr"
+  custom_data = base64encode(data.template_file.cloudinitdata.rendered)
+  network_interface_ids = [
+    azurerm_network_interface.appinterface.id
+  ]
+
+   admin_ssh_key {
+     username="linuxusr"
+     public_key = tls_private_key.linuxkey.public_key_openssh
+   }
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
+  }
+
+  source_image_reference {
+    publisher = "Canonical"
+    offer     = "0001-com-ubuntu-server-focal"
+    sku       = "20_04-lts"
+    version   = "latest"
+  }
+  depends_on = [
+    azurerm_network_interface.appinterface,
+    azurerm_resource_group.appgrp,
+    tls_private_key.linuxkey
+
+  ]
+}
+
+
+Using remote-exec
+===================================================================================================
+
+In Above files we have installed nginx and added Default html page using cloud Init way.
+Suppose if some package installation is not Supported by cloud Init, we can use remote-exec provisioner
+like below and do the package installation.
+
+copyfiles.tf
+=============
+resource "null_resource" "installnginx" {
+provisioner "remote-exec" {
+  inline = [
+    "sudo apt-get update",
+    "sudo apt-get -y install nginx"
+  ]
+
+      connection {
+        type="ssh"
+        user="linuxusr"
+        private_key = file("${local_file.linuxpemkey.filename}")
+        host ="${azurerm_public_ip.appip.ip_address}"
+      }
+    }
+
+    depends_on = [
+      local_file.linuxpemkey,
+      azurerm_linux_virtual_machine.linuxvm
+    ]
+}

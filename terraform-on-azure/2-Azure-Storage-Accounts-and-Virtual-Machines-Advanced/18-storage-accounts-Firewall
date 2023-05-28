@@ -1,0 +1,244 @@
+This is Regarding Accessing data from storage container and making it secure connection to outside world.
+1. we have a VM in a virtual_network
+2. we have a Storage Account (container & data inside it)
+
+Azure Provides some kind of Firewall with Azure Storage Account to Access and Secure the communication between Azure storage account and outside world.
+1. we can Access blob data from a specific Laptop (in networking section of SA we can add out client IP)
+2. we can Access blob data from a VM which in a virtual_network using Service Endpoint (it's a secure connection, i.e. create service endpoint in Vnet and attach that to SA in Networking section under Virtual networks click on +Add existing virtual network and select subnetA from drop down)
+
+First Lets create the VMs and a Storage Account (remove network_rules from storageaccount.tf & remove service_endpoints from networking.tf) with a container and blob added to it i.e. IIS_Config.ps1
+Once this is completed then Login to Azure VM which got created and Install Azure Storage Explorer and connect to it using keys.
+we will be able to connect to see storage account, container and blob data IIS_Config.ps1
+we will be able to  also see storage account, container and blob data IIS_Config.ps1 , from Azure account.
+
+It's becoz by default - if you go to SA-> Networking -> by default it's selected "Enabled from all networks"
+
+Now Let's do this:
+1. Deny from all selected vnets and IP Addresses.
+2. connect from our client/Laptop
+3. connect from VM which we have created (using service endpoint)
+
+Add below to storageaccount.tf and comment lines ip_rules & virtual_network_subnet_ids. Plan & Apply.
+You will see SA-> Networking -> selected as "Enabled from selected vnets and IP Addresses", below that under virtual networks you see nothing is selected.
+So you won't be abe to access SA-> container and blob data from your Laptop (azure account) & also not from Azure VM (from Azure Storage Explorer)
+
+to fix it , SA-> Networking -> under virtual network, select "Add my client IP" and also
+uncomment default_action & ip_rules and comment virtual_network_subnet_ids.
+
+Now to fix it Access from "Azure VM (from Azure Storage Explorer)", uncomment virtual_network_subnet_ids and make sure it's "virtual_network_subnet_ids = [azurerm_subnet.subnetA.id]"
+And also Add the service endpoint from Vnet to SubnetA. so add below in networking.tf in azure_subnet subnetA , Now plan and apply.
+Now you would be able to Access blob data from Azure VM (from Azure Storage Explorer)
+
+service_endpoints = ["Microsoft.Storage"]
+
+network_rules {
+  default_action             = "Deny"
+  ip_rules                   = ["our Laptop/client IP"]
+  virtual_network_subnet_ids = [azurerm_subnet.subnetA.id]
+}
+
+virtual_network_subnet_ids -> In this line make sure your "subnetA" is there, whichever subnet your virtual network is attached to.
+"our Laptop/client IP" -> we can see this in SA-> Networking
+
+virtualmachines.tf
+==================
+resource "azurerm_network_interface" "appinterface" {
+  name                = "appinterface"
+  location            = local.location
+  resource_group_name = local.resource_group_name
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.subnetA.id
+    private_ip_address_allocation = "Dynamic"
+    public_ip_address_id = azurerm_public_ip.appip.id
+  }
+  depends_on = [
+    azurerm_virtual_network.appnetwork,
+    azurerm_public_ip.appip
+   ]
+}
+
+resource "azurerm_public_ip" "appip" {
+  name                = "app-ip"
+  resource_group_name = local.resource_group_name
+  location            = local.location
+  allocation_method   = "Static"
+  depends_on = [
+    azurerm_resource_group.appgrp
+   ]
+}
+
+resource "azurerm_windows_virtual_machine" "appvm" {
+  name                = "appvm"
+  resource_group_name = local.resource_group_name
+  location            = local.location
+  size                = "Standard_D2s_v3"
+  admin_username      = "demouser"
+  admin_password      = "Azure@123"
+  network_interface_ids = [
+    azurerm_network_interface.appinterface.id,
+  ]
+
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
+  }
+
+  source_image_reference {
+    publisher = "MicrosoftWindowsServer"
+    offer     = "WindowsServer"
+    sku       = "2019-Datacenter"
+    version   = "latest"
+  }
+
+  depends_on = [
+    azurerm_virtual_network.appnetwork,
+    azurerm_network_interface.appinterface
+   ]
+}
+
+
+storageaccount.tf
+==================
+resource "azurerm_storage_account" "vmstore455545123" {
+  name                     = "vmstore455545123"
+  resource_group_name      = "app-grp"
+  location                 = "Central India"
+  account_tier             = "Standard"
+  account_replication_type = "LRS"
+  account_kind = "StorageV2"
+
+  network_rules {
+    default_action             = "Deny"
+    ip_rules                   = ["49.205.35.35"]
+    virtual_network_subnet_ids = [azurerm_subnet.subnetA.id]
+  }
+
+
+  depends_on = [
+    azurerm_resource_group.appgrp
+   ]
+}
+
+resource "azurerm_storage_container" "data" {
+  name                  = "data"
+  storage_account_name  = "vmstore455545123"
+  container_access_type = "blob"
+  depends_on = [
+    azurerm_storage_account.vmstore455545123
+   ]
+}
+
+resource "azurerm_storage_blob" "IISConfig" {
+  name                   = "IIS_Config.ps1"
+  storage_account_name   = "vmstore455545123"
+  storage_container_name = "data"
+  type                   = "Block"
+  source                 = "/Users/amiteshranjan/terraform-on-azure/IIS_Config.ps1"
+  depends_on = [
+    azurerm_storage_container.data
+   ]
+}
+
+
+provider.tf
+===========
+terraform {
+  required_providers {
+    azurerm = {
+      source = "hashicorp/azurerm"
+      version = "3.57.0"
+    }
+  }
+}
+
+provider "azurerm" {
+  subscription_id = "e3ee3ee2-119e-453a-a958-b8e385c680e0"
+  tenant_id = "4238699a-f505-4d45-8c2c-121606c75ffd"
+  client_id = "2d2e1929-6f85-4c8a-802e-2f619d741d2f"
+  client_secret = "Bqu8Q~MAz-NXKMn6gjhco-rgEig-7DAXkLNGlcgu"
+  features {}
+}
+
+
+networking.tf
+==============
+resource "azurerm_virtual_network" "appnetwork" {
+  name                = local.virtual_network.name
+  location            = local.location
+  resource_group_name = local.resource_group_name
+  address_space       = [local.virtual_network.address_space]
+  depends_on = [
+    azurerm_resource_group.appgrp
+   ]
+}
+
+resource "azurerm_subnet" "subnetA" {
+  name                 = "SubnetA"
+  resource_group_name  = local.resource_group_name
+  virtual_network_name = local.virtual_network.name
+  address_prefixes     = ["10.0.0.0/24"]
+  service_endpoints = ["Microsoft.Storage"]
+  depends_on = [
+    azurerm_virtual_network.appnetwork
+   ]
+}
+
+resource "azurerm_network_security_group" "appnsg" {
+  name                = "app-nsg"
+  location            = local.location
+  resource_group_name = local.resource_group_name
+
+  security_rule {
+    name                       = "AllowRDP"
+    priority                   = 300
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "3389"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+  depends_on = [
+    azurerm_virtual_network.appnetwork
+   ]
+}
+
+resource "azurerm_subnet_network_security_group_association" "appnsglink" {
+  subnet_id                 = azurerm_subnet.subnetA.id
+  network_security_group_id = azurerm_network_security_group.appnsg.id
+  depends_on = [
+    azurerm_virtual_network.appnetwork,
+    azurerm_network_security_group.appnsg,
+    azurerm_network_interface.appinterface
+   ]
+}
+
+
+main.tf
+========
+resource "azurerm_resource_group" "appgrp" {
+  name     = local.resource_group_name
+  location = local.location
+}
+
+locals.tf
+=========
+locals {
+  resource_group_name="app-grp"
+  location="Central India"
+  virtual_network={
+    name="app-network"
+    address_space="10.0.0.0/16"
+  }
+}
+
+IIS_Config.ps1
+==============
+import-module servermanager
+add-windowsfeature web-server -includeallsubfeature
+add-windowsfeature Web-Asp-Net45
+add-windowsfeature Net-Framework-Features
+Set-Content -Path "C:\inetpub\wwwroot\Default.html" -Value "This is the server $($env:computername)"

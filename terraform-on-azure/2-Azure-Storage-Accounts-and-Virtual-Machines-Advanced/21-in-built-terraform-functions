@@ -1,0 +1,123 @@
+Refer for in-built functions in Terraform -
+https://developer.hashicorp.com/terraform/language/functions
+
+Go to Terraform console, using command "terraform console" & we can run functions to test and see the behaviour -
+terraform console
+> max(2,3,4)
+4
+>
+
+Let's Now see how we can use these in-built functions in Terraform to create a unique storageaccount name.
+
+1. random_uuid generator function gives a random unique string like below (see randomid value) -
+
+resource "random_uuid" "storageaccountidentifier" {
+}
+output "randomid"{
+  value=random_uuid.storageaccountidentifier.result
+}
+
+randomid = "7f51cb6a-de87-5776-7f52-52737be2b03c"
+
+2. If we add in-built function substr(), it will just start from beginning & gives 8 character lenght value.
+   0 -> means start from beginning
+   8 -> give just the 8 character lenght value (if we see above randomid value it has combination of 8 and 4 characters)
+becoz in our storage account name, we don't want that much long unique name, so we can use substr() function to just take first 8 character value, like below.
+
+resource "random_uuid" "storageaccountidentifier" {
+}
+output "randomid"{
+  value=substr(random_uuid.storageaccountidentifier.result,0,8)
+}
+
+randomid = "f4c6c701"
+
+So our main.tf will look like this:
+
+main.tf
+=======
+resource "azurerm_resource_group" "appgrp" {
+  name     = local.resource_group_name
+  location = local.location
+}
+
+resource "random_uuid" "storageaccountidentifier" {
+
+}
+
+output "randomid"{
+  value=substr(random_uuid.storageaccountidentifier.result,0,8)
+}
+
+
+3. And then combine that unique number generated with the prefix of storage account name whcih user can Provide on runtime.
+So it will create something like: appstoref4c6c701
+So, in variables.tf we will define user to enter storage account name on runtime, like below way.
+
+variables.tf
+============
+variable "storage_account_name" {
+    type = string
+    description = "This is the prefix of the storage account name"
+}
+
+Now, once user enter the storage account name, we need to join it with random uuid with 8 character random value.
+someting like below. suppose user enters as "appstore" & unique value generated is "f4c6c701".
+so we need to join these 2 using join() function.
+appstoref4c6c701
+
+So our storageaccount.tf will Look like below. See the name field. Syntax of join() function is like below.
+join(separator, list)
+join("-", ["foo", "bar", "baz"])
+so output would be: "foo-bar-baz" (it's combining strings with -)
+But in our storage account name we just want like "appstoref4c6c701", we don't want any separator between "appstore" & "f4c6c701".
+So we have given like below. See double quote in join("",[]). It means there is no separator.
+name = join("",["${var.storage_account_name}",substr(random_uuid.storageaccountidentifier.result,0,8)])
+       join(no separator,user will enter prefix of storage account name,unique random 8 char value)
+       Both will get combined and we get something like: appstoref4c6c701
+
+       ${var.storage_account_name} -> This value comes from variables.tf
+       substr(random_uuid.storageaccountidentifier.result,0,8) -> This value comes from main.tf
+
+storageaccount.tf
+=================
+resource "azurerm_storage_account" "storageaccountresource" {
+  name = join("",["${var.storage_account_name}",substr(random_uuid.storageaccountidentifier.result,0,8)])
+  resource_group_name      = "app-grp"
+  location                 = "Central India"
+  account_tier             = "Standard"
+  account_replication_type = "LRS"
+  account_kind = "StorageV2"
+  depends_on = [
+    azurerm_resource_group.appgrp,
+    random_uuid.storageaccountidentifier
+   ]
+}
+
+
+provider.tf
+===========
+terraform {
+  required_providers {
+    azurerm = {
+      source = "hashicorp/azurerm"
+      version = "3.57.0"
+    }
+  }
+}
+
+provider "azurerm" {
+  subscription_id = "e3ee3ee2-119e-453a-a958-b8e385c680e0"
+  tenant_id = "4238699a-f505-4d45-8c2c-121606c75ffd"
+  client_id = "2d2e1929-6f85-4c8a-802e-2f619d741d2f"
+  client_secret = "Bqu8Q~MAz-NXKMn6gjhco-rgEig-7DAXkLNGlcgu"
+  features {}
+}
+
+
+locals.tf
+=========
+locals {
+  resource_group_name="app-grp"
+  location="Central India"
+}

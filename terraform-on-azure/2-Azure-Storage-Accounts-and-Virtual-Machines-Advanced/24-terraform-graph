@@ -1,0 +1,10 @@
+https://developer.hashicorp.com/terraform/cli/commands/graph
+
+First Need to Install graphviz Tool.
+https://graphviz.org/download/
+
+Then Run this command from command prompt from folder where you have all your configurations files like
+main.tf, storaaccount.tf & etc.
+terraform graph | dot -Tsvg > graph.svg
+
+Then we can see a pictorial Representation of all our Resources in a file graph.svg

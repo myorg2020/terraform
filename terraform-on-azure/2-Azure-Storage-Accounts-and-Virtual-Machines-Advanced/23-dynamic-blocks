@@ -1,0 +1,74 @@
+locals.tf
+==========
+locals {
+  resource_group_name="app-grp"
+  location="Central India"
+
+  networksecuritygroup_rules=[
+    {
+      priority=200
+      destination_port_range=3389
+    },
+    {
+      priority=300
+      destination_port_range=80
+    }
+  ]
+}
+
+
+main.tf
+========
+resource "azurerm_resource_group" "appgrp" {
+  name     = local.resource_group_name
+  location = local.location
+}
+
+
+networking.tf
+==============
+resource "azurerm_network_security_group" "appnsg" {
+  name                = "app-nsg"
+  location            = local.location
+  resource_group_name = local.resource_group_name
+
+dynamic "security_rule" {
+    for_each=local.networksecuritygroup_rules
+    content {
+      name="Allow-${security_rule.value.destination_port_range}"
+      priority=security_rule.value.priority
+      direction                  = "Inbound"
+      access                     = "Allow"
+      protocol                   = "Tcp"
+      source_port_range          = "*"
+      destination_port_range     = security_rule.value.destination_port_range
+      source_address_prefix      = "*"
+      destination_address_prefix = "*"
+    }
+
+}
+
+depends_on = [
+    azurerm_resource_group.appgrp
+   ]
+}
+
+
+provider.tf
+===========
+terraform {
+  required_providers {
+    azurerm = {
+      source = "hashicorp/azurerm"
+      version = "3.57.0"
+    }
+  }
+}
+
+provider "azurerm" {
+  subscription_id = "e3ee3ee2-119e-453a-a958-b8e385c680e0"
+  tenant_id = "4238699a-f505-4d45-8c2c-121606c75ffd"
+  client_id = "2d2e1929-6f85-4c8a-802e-2f619d741d2f"
+  client_secret = "Bqu8Q~MAz-NXKMn6gjhco-rgEig-7DAXkLNGlcgu"
+  features {}
+}
