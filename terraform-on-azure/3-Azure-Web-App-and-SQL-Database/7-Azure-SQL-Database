@@ -1,0 +1,80 @@
+To Create SQL database in Azure...we need to first create SQL Server.
+1st create "SQL Server" -> on top of it create "SQL database" -> Then on top of SQL database we will create tables
+see the file "sqldatabase.tf" below. "SQL Server" name should be unique.
+
+After we Apply terraform command, below 2 will be create:
+1. sqlserver0604202399               -> This is SQL server
+2. appdb (sqlserver0604202399/appdb) -> This is SQL database created in SQL Server
+
+Then we will try to connect to SQL database using "Azure Data Studio" Application.
+Go to Azure -> click "SQL database" which we have created i.e. appdb (sqlserver0604202399/appdb) -> In overview
+check server name URL i.e. sqlserver0604202399.database.windows.net
+
+copy this "server name URL" and open "Azure Data Studio" Application -> click "create a commection" -> In server field
+enter this "server name URL" and Enter username and Password which we have Provided at the time of creating "SQL server"
+see sqldatabase.tf file for username and password. But we will not be able to connect, it shows a message like
+"A firewall rule is required to access the SQL Server Instance". This we will see in next section.
+
+
+
+locals.tf
+=========
+locals {
+  resource_group_name="app-grp"
+  location="Central India"
+}
+
+
+main.tf
+========
+resource "azurerm_resource_group" "appgrp" {
+  name     = local.resource_group_name
+  location = local.location
+}
+
+
+provider.tf
+===========
+terraform {
+  required_providers {
+    azurerm = {
+      source = "hashicorp/azurerm"
+      version = "3.57.0"
+    }
+  }
+}
+
+provider "azurerm" {
+  subscription_id = "XXXXX"
+  tenant_id = "XXXXX"
+  client_id = "XXXXX"
+  client_secret = "XXXXX"
+  features {}
+}
+
+sqldatabase.tf
+===============
+resource "azurerm_mssql_server" "sqlserver" {
+  name                         = "sqlserver0604202399"
+  resource_group_name          = local.resource_group_name
+  location                     = local.location
+  version                      = "12.0"
+  administrator_login          = "sqladmin"
+  administrator_login_password = "Azure@1234"
+  depends_on = [
+    azurerm_resource_group.appgrp
+   ]
+
+}
+
+resource "azurerm_mssql_database" "appdb" {
+  name           = "appdb"
+  server_id      = azurerm_mssql_server.sqlserver.id
+  collation      = "SQL_Latin1_General_CP1_CI_AS"
+  license_type   = "LicenseIncluded"
+  max_size_gb    = 2
+  sku_name       = "Basic"
+  depends_on = [
+    azurerm_mssql_server.sqlserver
+   ]
+}

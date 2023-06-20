@@ -1,0 +1,139 @@
+There are Auditing of Database which includes:
+1. Tracking Database Events
+2. Gain Insights onto any sort of anomalies
+3. And Many other auditing of logs
+
+So, to have these kinds of events and logs for Auditing, we need to Send logs from Database to "Log Analytics workspace".
+So, we need to do below:
+1. create Azure "Log Analytics workspace".
+
+2. Enable an "Auditing Policy" for the Azure "SQL Database".
+    Manually how we do it:
+    go to Azure Portal -> Go to Database which we have created -> Under "Security" there is Auditing feature ->
+    we need to enable that option "Enable Azure SQL Auditing" button & tick the checkbox "Log Analytics".
+
+3. Enable the "diagnostic Setting" of the Azure "SQL Database" so that it can send data to "Log Analytics workspace".
+    Manually how we do it:
+    go to Azure Portal -> Go to Database which we have created -> Under "Monitoring" there is option "diagnostic Settings" (it also helps to send data to LAW) -> click on "+ Add diagnostic setting" ->
+    inside Destination Details tick the checkbox "Send to LAW"
+
+We will do all steps using Terraform. Use Below files.
+
+Once Terraform deployment is completed.
+Go to Azure Portal -> "SQL database" appdb which has been created.
+* Under "Security" Section click Auditing, we can see "Enable Azure SQL Auditing" is enabled & Log Analytics checkbox is selected.
+* Under "Monitoring" section click Diagnostic settings, we can see name as "appdb-setting", click on "Edit setting".
+   we can see category is selected as "SQL Security Audit Event" & under Destination details LAW is selected as "dbworkspace985560099" which is our LAW.
+
+
+auditing.tf
+===========
+resource "azurerm_log_analytics_workspace" "dbworkspace" {
+  name                = "dbworkspace985560099"
+  location            = local.location
+  resource_group_name = local.resource_group_name
+  sku                 = "PerGB2018"
+  retention_in_days   = 30
+  depends_on = [
+    azurerm_resource_group.appgrp
+   ]
+}
+
+resource "azurerm_mssql_database_extended_auditing_policy" "sqlauditing" {
+  database_id                             = azurerm_mssql_database.appdb.id
+  log_monitoring_enabled                  = true
+  depends_on = [
+    azurerm_mssql_database.appdb
+   ]
+}
+
+resource "azurerm_monitor_diagnostic_setting" "diagnosticsetting" {
+  name               = "${azurerm_mssql_database.appdb.name}-setting"
+  target_resource_id = "${azurerm_mssql_database.appdb.id}"
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.dbworkspace.id
+
+  enabled_log {
+    category = "SQLSecurityAuditEvents"
+
+    retention_policy {
+      enabled = false
+    }
+  }
+  depends_on = [
+    azurerm_log_analytics_workspace.dbworkspace,
+    azurerm_mssql_database.appdb
+   ]
+}
+
+
+locals.tf
+=========
+locals {
+  resource_group_name="app-grp"
+  location="Central India"
+}
+
+
+main.tf
+=======
+resource "azurerm_resource_group" "appgrp" {
+  name     = local.resource_group_name
+  location = local.location
+}
+
+
+provider.tf
+===========
+terraform {
+  required_providers {
+    azurerm = {
+      source = "hashicorp/azurerm"
+      version = "3.57.0"
+    }
+  }
+}
+
+provider "azurerm" {
+  subscription_id = "XXXXX"
+  tenant_id = "XXXXX"
+  client_id = "XXXXX"
+  client_secret = "XXXXX"
+  features {}
+}
+
+sqldatabase.tf
+==============
+resource "azurerm_mssql_server" "sqlserver" {
+  name                         = "sqlserver202399060400"
+  resource_group_name          = local.resource_group_name
+  location                     = local.location
+  version                      = "12.0"
+  administrator_login          = "sqladmin"
+  administrator_login_password = "Azure@1234"
+  depends_on = [
+    azurerm_resource_group.appgrp
+   ]
+
+}
+
+resource "azurerm_mssql_database" "appdb" {
+  name           = "appdb"
+  server_id      = azurerm_mssql_server.sqlserver.id
+  collation      = "SQL_Latin1_General_CP1_CI_AS"
+  license_type   = "LicenseIncluded"
+  max_size_gb    = 2
+  sku_name       = "S0"
+  depends_on = [
+    azurerm_mssql_server.sqlserver
+   ]
+}
+
+resource "azurerm_mssql_firewall_rule" "allowmyclientip" {
+  name             = "AllowClientIP"
+  server_id        = azurerm_mssql_server.sqlserver.id
+  start_ip_address = "49.205.34.220"
+  end_ip_address   = "49.205.34.220"
+  depends_on = [
+    azurerm_mssql_server.sqlserver
+   ]
+}

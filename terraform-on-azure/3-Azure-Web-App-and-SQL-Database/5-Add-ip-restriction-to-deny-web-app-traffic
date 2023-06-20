@@ -1,0 +1,84 @@
+Let's Now Add Ip Restriction Rule for Web App to Deny all Connection from Internet.
+After Web App is created , go to web App -> Networking -> Access Restriction
+we can see it's showing as "Deny_AllTraffic" as in webapp.tf we have added block ip_restriction to deny all traffic.
+
+If we try to browse the URL (companyapp0011000.azurewebsites.net), we will get 403 Forbidden.
+
+webapp.tf
+=========
+resource "azurerm_service_plan" "companyplan" {
+  name                = "companyplan"
+  resource_group_name = local.resource_group_name
+  location            = local.location
+  os_type             = "Windows"
+  sku_name            = "S1"
+  depends_on = [
+    azurerm_resource_group.appgrp
+  ]
+}
+
+resource "azurerm_windows_web_app" "companyapp991000" {
+  name                = "companyapp991000"
+  resource_group_name = local.resource_group_name
+  location            = local.location
+  service_plan_id     = azurerm_service_plan.companyplan.id
+
+  site_config {
+    application_stack {
+      current_stack="dotnet"
+      dotnet_version="v6.0"
+    }
+    ip_restriction {
+      action="Deny"
+      ip_address="0.0.0.0/0"
+      name="Deny_AllTraffic"
+      priority=200
+   }
+}
+
+  depends_on = [
+    azurerm_service_plan.companyplan
+  ]
+}
+
+resource "azurerm_app_service_source_control" "appservice_sourcecontrol" {
+  app_id   = azurerm_windows_web_app.companyapp991000.id
+  repo_url = "https://github.com/myorg2020/webapp"
+  branch   = "main"
+  use_manual_integration = true
+}
+
+
+provider.tf
+===========
+terraform {
+  required_providers {
+    azurerm = {
+      source = "hashicorp/azurerm"
+      version = "3.57.0"
+    }
+  }
+}
+
+provider "azurerm" {
+  subscription_id = "XXXXX"
+  tenant_id = "XXXXX"
+  client_id = "XXXXX"
+  client_secret = "XXXXX"
+  features {}
+}
+
+
+main.tf
+=======
+resource "azurerm_resource_group" "appgrp" {
+  name     = local.resource_group_name
+  location = local.location
+}
+
+locals.tf
+=========
+locals {
+  resource_group_name="app-grp"
+  location="Central India"
+}

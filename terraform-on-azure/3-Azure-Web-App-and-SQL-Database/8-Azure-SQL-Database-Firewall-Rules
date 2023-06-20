@@ -1,0 +1,94 @@
+In the section "7-Azure-SQL-Database" we hae seen to create a "SQL server" first & then create a "SQL Databse".
+But we were not able to conect to "SQL Databse" using "Azure Data Studio".
+It's becoz we there is Firewall Rule set by default in "SQL Databe server" which doesn't allow us to connect.
+
+When we create "SQL Databe server" & "SQL Databse" Manually from Azure Portal it gives us an option to our client IP
+to "SQL Databe server" and hence we can connect.
+
+But in last section "7-Azure-SQL-Database", we have created "SQL Databe server" & "SQL Databse" using terraform, so we have not
+Provided option to add our client IP (i.e. my workstation/laptop IP) in Firewall.
+
+So we will Add Now, See the file sqldatabase.tf , we have added a resource called "azurerm_mssql_firewall_rule".
+Mark the line "start_ip_address" & "end_ip_address". It's nothing but our workstation/laptop IP.
+How to get this IP i.e. our workstation/laptop IP - Just google "what is my ip".
+Another way to get our workstation/laptop IP is:
+Go to "SQL Database Server" in Azure which we have created as "sqlserver0604202399" -> GO to Networking ->
+Under Firewall Rules it will show "Add Your client IPv4 addrees (49.205.34.220)".
+
+So this above way we can use to add our client IP in Firewall to allow to connect to SQL Database.
+
+NOTE: There is also Another way to allow client IP in Firewall, is to create a "Service Endpoint" Link in Virtual Network
+      and then add/connect this "Service Endpoint" in "SQL Database server" which we will see Later.
+
+sqldatabase.tf
+==============
+resource "azurerm_mssql_server" "sqlserver" {
+  name                         = "sqlserver0604202399"
+  resource_group_name          = local.resource_group_name
+  location                     = local.location
+  version                      = "12.0"
+  administrator_login          = "sqladmin"
+  administrator_login_password = "Azure@1234"
+  depends_on = [
+    azurerm_resource_group.appgrp
+   ]
+
+}
+
+resource "azurerm_mssql_database" "appdb" {
+  name           = "appdb"
+  server_id      = azurerm_mssql_server.sqlserver.id
+  collation      = "SQL_Latin1_General_CP1_CI_AS"
+  license_type   = "LicenseIncluded"
+  max_size_gb    = 2
+  sku_name       = "Basic"
+  depends_on = [
+    azurerm_mssql_server.sqlserver
+   ]
+}
+
+resource "azurerm_mssql_firewall_rule" "allowmyclientip" {
+  name             = "AllowClientIP"
+  server_id        = azurerm_mssql_server.sqlserver.id
+  start_ip_address = "49.205.34.220"
+  end_ip_address   = "49.205.34.220"
+  depends_on = [
+    azurerm_mssql_server.sqlserver
+   ]
+}
+
+
+provider.tf
+============
+terraform {
+  required_providers {
+    azurerm = {
+      source = "hashicorp/azurerm"
+      version = "3.57.0"
+    }
+  }
+}
+
+provider "azurerm" {
+  subscription_id = "XXXXX"
+  tenant_id = "XXXXX"
+  client_id = "XXXXX"
+  client_secret = "XXXXX"
+  features {}
+}
+
+
+main.tf
+========
+resource "azurerm_resource_group" "appgrp" {
+  name     = local.resource_group_name
+  location = local.location
+}
+
+
+locals.tf
+=========
+locals {
+  resource_group_name="app-grp"
+  location="Central India"
+}

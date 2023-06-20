@@ -1,0 +1,111 @@
+"Application Insights" provides features of application performance management and monitoring of live web
+applications.
+
+we have "Azure web App" -> "Application Insights" will take logs of application which is running
+on Azure web App & send to "Log Analytics workspace" (Central solution for all logs).
+
+So we need to delpoy 2 resources:
+1. Log Analytics workspace
+2. Application Insights
+So, for this use file applicationinsights.tf and create log_analytics_workspace & application_insights with unique Names.
+Mark line "workspace_id = azurerm_log_analytics_workspace.appworkspace.id" , used to connect both with each other.
+
+Once they are connected, now we need to connect our Azure Web App with "Application Insights" which will send log to Log Analytics workspace.
+manually we do this way, go to Azure Web App -> Configuration -> Under App settings we can add "Application Insights" related strings and also we can add SQL database related connection strings.
+To do this using Terraform - This will be done by lines "app_settings" which we have added in webapp.tf
+
+After these are created, go to your Azure Web App & also Explore created "Log Analytics workspace" & "Application Insights", go to Metrics section and explore, we can see logs are on.
+Azure Web App -> Application Insights , it will show as "Application Insights is linked through Instrumentation Key in app settings"
+Azure Web App -> Configuration -> Application Settings , it will show "APPINSIGHTS_INSTRUMENTATIONKEY" & "APPLICATIONINSIGHTS_CONNECTION_STRING"
+
+
+applicationinsights.tf
+=======================
+  resource "azurerm_log_analytics_workspace" "appworkspace" {
+  name                = "appworkspace3355662023344"
+  location            = local.location
+  resource_group_name = local.resource_group_name
+  sku                 = "PerGB2018"
+  retention_in_days   = 30
+}
+
+resource "azurerm_application_insights" "appinsights" {
+  name                = "appinsights55620303"
+  location            = local.location
+  resource_group_name = local.resource_group_name
+  application_type    = "web"
+  workspace_id = azurerm_log_analytics_workspace.appworkspace.id
+  depends_on = [
+    azurerm_log_analytics_workspace.appworkspace
+   ]
+}
+
+
+webapp.tf
+=========
+resource "azurerm_service_plan" "companyplan" {
+  name                = "companyplan"
+  resource_group_name = local.resource_group_name
+  location            = local.location
+  os_type             = "Windows"
+  sku_name            = "B1"
+  depends_on = [
+    azurerm_resource_group.appgrp
+  ]
+}
+
+resource "azurerm_windows_web_app" "companyapp991000" {
+  name                = "companyapp991000"
+  resource_group_name = local.resource_group_name
+  location            = local.location
+  service_plan_id     = azurerm_service_plan.companyplan.id
+
+  site_config {
+    application_stack {
+      current_stack="dotnet"
+      dotnet_version="v6.0"
+    }
+}
+
+app_settings = {
+    "APPINSIGHTS_INSTRUMENTATIONKEY" = azurerm_application_insights.appinsights.instrumentation_key
+    "APPLICATIONINSIGHTS_CONNECTION_STRING" = azurerm_application_insights.appinsights.connection_string
+}
+
+  depends_on = [
+    azurerm_service_plan.companyplan
+  ]
+}
+
+provider.tf
+===========
+terraform {
+  required_providers {
+    azurerm = {
+      source = "hashicorp/azurerm"
+      version = "3.57.0"
+    }
+  }
+}
+
+provider "azurerm" {
+  subscription_id = "XXXXX"
+  tenant_id = "XXXXX"
+  client_id = "XXXXX"
+  client_secret = "XXXXX"
+  features {}
+}
+
+main.tf
+========
+resource "azurerm_resource_group" "appgrp" {
+  name     = local.resource_group_name
+  location = local.location
+}
+
+locals.tf
+=========
+locals {
+  resource_group_name="app-grp"
+  location="Central India"
+}

@@ -1,7 +1,7 @@
 terraform plan -out main.tfplan
 terraform apply "main.tfplan"
 
-For storing the custom script which needs to run as POst deployment of apps after VM gets created...Need a storage account and container.
+For storing the custom script which needs to run as Post deployment of apps after VM gets created...Need a storage account and container.
 Refer the file customscript.tf
 
 virtualmachines.tf

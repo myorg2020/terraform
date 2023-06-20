@@ -1,0 +1,142 @@
+In this section now we will see how to create table and insert data into the SQL Database.
+we have a file "01.sql" script in which we have a table with 3 coloumn and Rows as data to be inserted.
+We will do this using terraform.
+
+We have a file "sqldatabase.tf" to create SQL Server and Database. Make for Resource "azurerm_mssql_firewall_rule"
+Add your Laptop IP in "start_ip_address" & "end_ip_address" to allow Access in Firewall to Access SQL Server
+from your Laptop using Azure Data Studio.
+
+we have a file seeddatabase.tf to create table and Add Data in Database. But to do this Terraform is not having
+a azurerm Resource like for other things we have seen. Hence, if there is no Resource defined in Terraform for any such action/work
+to do we need to a resource called - resource "null_resource" & then use that command line tool for that application to do the work.
+In this case we have. Below is the Syntax for null_resource
+
+resource "null_resource" "database_setup" {
+  provisioner "local-exec" {
+      command = "Add your comand here"
+  }
+  depends_on=[
+    azurerm_mssql_database.appdb
+  ]
+}
+
+In our case for our current use, we use "sqlcmd" comand line to connect to DB and create table into it.
+So, first Make sure to Install "sqlcmd" in your workstation.
+
+Syntax => sqlcmd -S "sql server name, get from sqldatabase.tf" -U "sql server username, get from sqldatabase.tf" -d "mssql database name, get from sqldatabase.tf" -i "insert sql file"
+sqlcmd -S ${azurerm_mssql_server.sqlserver.fully_qualified_domain_name} -U ${azurerm_mssql_server.sqlserver.administrator_login} -d appdb -i 01.sql
+
+Before Running Plan and Apply. Make Sure to Add "SQL Server" Password which we have added in file "sqldatabase.tf"
+in Env variable. i.e.
+export SQLCMDPASSWORD=Azure@3456
+echo $SQLCMDPASSWORD
+
+Then do Plan and Apply. After doing this go "Azure data Studio", conect to SQL server.
+And we can see out db "appdb" and a table inserted as "Products", right click on table "Products" select 1000 row.
+we can now see the data inserted into this Table.
+
+01.sql
+=======
+CREATE TABLE Products
+(
+     ProductID int,
+     ProductName varchar(1000),
+     Quantity int
+)
+
+
+INSERT INTO Products(ProductID,ProductName,Quantity) VALUES (1,'Mobile',100)
+
+INSERT INTO Products(ProductID,ProductName,Quantity) VALUES (2,'Laptop',200)
+
+INSERT INTO Products(ProductID,ProductName,Quantity) VALUES (3,'Tabs',300)
+
+
+locals.tf
+=========
+locals {
+  resource_group_name="app-grp"
+  location="Central India"
+}
+
+main.tf
+=======
+resource "azurerm_resource_group" "appgrp" {
+  name     = local.resource_group_name
+  location = local.location
+}
+
+
+provider.tf
+============
+terraform {
+  required_providers {
+    azurerm = {
+      source = "hashicorp/azurerm"
+      version = "3.57.0"
+    }
+  }
+}
+
+provider "azurerm" {
+  subscription_id = "XXXXX"
+  tenant_id = "XXXXX"
+  client_id = "XXXXX"
+  client_secret = "XXXXX"
+  features {}
+}
+
+
+seeddatabase.tf
+================
+resource "null_resource" "database_setup" {
+  provisioner "local-exec" {
+      command = "sqlcmd -S ${azurerm_mssql_server.sqlserver.fully_qualified_domain_name} -U ${azurerm_mssql_server.sqlserver.administrator_login} -d appdb -i 01.sql"
+  }
+  depends_on=[
+    azurerm_mssql_database.appdb
+  ]
+}
+
+sqldatabase.tf
+==============
+resource "azurerm_mssql_server" "sqlserver" {
+  name                         = "sqlserver4809400"
+  resource_group_name          = local.resource_group_name
+  location                     = local.location
+  version                      = "12.0"
+  administrator_login          = "sqladmin"
+  administrator_login_password = "Azure@3456"
+  depends_on = [
+    azurerm_resource_group.appgrp
+  ]
+}
+
+resource "azurerm_mssql_database" "appdb" {
+  name           = "appdb"
+  server_id      = azurerm_mssql_server.sqlserver.id
+  collation      = "SQL_Latin1_General_CP1_CI_AS"
+  license_type   = "LicenseIncluded"
+  max_size_gb    = 2
+  sku_name       = "S0"
+
+ lifecycle {
+    ignore_changes = [
+      license_type
+    ]
+  }
+
+  depends_on = [
+    azurerm_mssql_server.sqlserver
+      ]
+}
+
+resource "azurerm_mssql_firewall_rule" "allowmyclient" {
+  name             = "AllowClientIP"
+  server_id        = azurerm_mssql_server.sqlserver.id
+  start_ip_address = "49.205.37.63"
+  end_ip_address   = "49.205.37.63"
+  depends_on = [
+    azurerm_mssql_server.sqlserver
+  ]
+}

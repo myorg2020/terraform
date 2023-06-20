@@ -1,0 +1,82 @@
+If we need to host the Apps like on Azure - .Net, .Net Core, Java, Ruby, Node.js, Python
+
+There are 2 ways:
+1. Infrastructure as a service -> To create Azure VM and other required resources and then host on top of it.
+   In this case we will have to Manage those resources by ourselves.
+
+2. Platform as a service -> Azure App Service (Azure Web Apps)
+   In this case - we don't have to maintain the underlying compute Infrastructure
+                  It has features such as Autoscaling & Security
+                  It has DevOps capabilities which includes continuous deployment
+   For Azure Web Apps to host we need first to have Azure App Service Plan which Provides compute Infrastructure in background.
+
+Use below files to create App service Plan and Azure Web Apps.
+once completed then go to Azure Web App and in overview page look for "Default domain"
+will get a URL like: companyapp0011000.azurewebsites.net
+Browse this URL in browser, we can see a default web App is up & Running.
+
+
+webapp.tf
+=========
+resource "azurerm_service_plan" "companyplan" {
+  name                = "companyplan"
+  resource_group_name = local.resource_group_name
+  location            = local.location
+  os_type             = "Windows"
+  sku_name            = "B1"
+  depends_on = [
+    azurerm_resource_group.appgrp
+   ]
+}
+
+resource "azurerm_windows_web_app" "companyapp0011000" {
+  name                = "companyapp0011000"
+  resource_group_name = local.resource_group_name
+  location            = local.location
+  service_plan_id     = azurerm_service_plan.companyplan.id
+
+  site_config {
+    application_stack {
+      current_stack="dotnet"
+      dotnet_version="v6.0"
+    }
+  }
+  depends_on = [
+    azurerm_service_plan.companyplan
+   ]
+}
+
+
+provider.tf
+===========
+terraform {
+  required_providers {
+    azurerm = {
+      source = "hashicorp/azurerm"
+      version = "3.57.0"
+    }
+  }
+}
+
+provider "azurerm" {
+  subscription_id = "XXXXX"
+  tenant_id = "XXXXX"
+  client_id = "XXXXX"
+  client_secret = "XXXXX"
+  features {}
+}
+
+
+main.tf
+========
+resource "azurerm_resource_group" "appgrp" {
+  name     = local.resource_group_name
+  location = local.location
+}
+
+locals.tf
+==========
+locals {
+  resource_group_name="app-grp"
+  location="Central India"
+}

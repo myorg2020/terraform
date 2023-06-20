@@ -1,0 +1,233 @@
+In Previous sections we have created "Azure SQL Database" which is offering service from Azure cloud (PaaS).
+In that Azure SQL Server and Database is created & Managed by Azure which is PaaS offering from Azure.
+
+But there may be Requirement to have SQL Database Installed in a Separate Azure VM for some specifc Purpose.
+So in that case we need to have SQL base Windows Image and Provision a VM, which will have SQL Server.
+
+First we Need to have a virtual network in Subnet: 10.0.0.0/16
+Then create 2 Subnets:
+1. appsubnet: 10.0.0.0/24 (For Application VMs), App VMs have Public IPs
+2. dbsubnet: 10.0.1.0/24 (For DB VMs), DB VMs have Private IPs
+
+Also in NSG we create a Rule to allow Port 1433 for DB VM as SQL Listens on 1433 Port.
+And once these Resource are created Login to VM and will see SQL Server is Installed in that VM.
+we see we have 2 VMz created:
+  dbvm - virtual machine (Login to the VM using VM's username & password & we can see SQL Installed)
+  dbvm - SQL virtual machine (This is nothing but SQL Server extension which was created for above VM)
+
+dbvm (virtual machine) -> we have allowed traffic on Port 1433
+This is based on SQL Server extension which is dbvm (SQL virtual machine)
+
+Go to dbvm (SQL virtual machine) -> Security Configuration -> Security & Networking SQL connectivity,
+by default it's selected as "Private (within Virtual Network)" which is fine as DBs should have Private
+connectivity not Public.
+
+we also have a option in Security Configuration -> SQL Credentials, SQL Authentication:
+Disable (by default this is seletected) & Enable
+Becoz if we see file "virtualmachines.tf" it has enabled Authentication on VM Level not on SQL Authentication level.
+we connect to Azure VM using username and Password and we can see SQL Server Installed.
+
+networking.tf
+==============
+resource "azurerm_virtual_network" "appnetwork" {
+  name                = local.virtual_network.name
+  location            = local.location
+  resource_group_name = local.resource_group_name
+  address_space       = [local.virtual_network.address_space]
+  depends_on = [
+    azurerm_resource_group.appgrp
+   ]
+}
+
+resource "azurerm_subnet" "appsubnet" {
+  name                      = "appsubnet"
+  resource_group_name       = local.resource_group_name
+  virtual_network_name      = local.virtual_network.name
+  address_prefixes          = ["10.0.0.0/24"]
+  depends_on = [
+    azurerm_virtual_network.appnetwork
+   ]
+}
+
+resource "azurerm_subnet" "dbsubnet" {
+  name                      = "dbsubnet"
+  resource_group_name       = local.resource_group_name
+  virtual_network_name      = local.virtual_network.name
+  address_prefixes          = ["10.0.1.0/24"]
+  depends_on = [
+    azurerm_virtual_network.appnetwork
+   ]
+}
+
+resource "azurerm_network_security_group" "dbnsg" {
+  name                = "db-nsg"
+  location            = local.location
+  resource_group_name = local.resource_group_name
+
+  security_rule {
+    name                       = "AllowRDP"
+    priority                   = 300
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "3389"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "AllowSQL"
+    priority                   = 400
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "1433"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+depends_on = [
+    azurerm_virtual_network.appnetwork
+ ]
+
+}
+
+resource "azurerm_subnet_network_security_group_association" "dbnsg-link" {
+  subnet_id                 = azurerm_subnet.dbsubnet.id
+  network_security_group_id = azurerm_network_security_group.dbnsg.id
+
+  depends_on = [
+    azurerm_virtual_network.appnetwork,
+    azurerm_network_security_group.dbnsg
+   ]
+}
+
+
+virtualmachines.tf
+===================
+resource "azurerm_network_interface" "dbinterface" {
+  name                = "dbinterface"
+  location            = local.location
+  resource_group_name = local.resource_group_name
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.dbsubnet.id
+    private_ip_address_allocation = "Dynamic"
+    public_ip_address_id = azurerm_public_ip.dbip.id
+  }
+
+  depends_on = [
+    azurerm_virtual_network.appnetwork,
+    azurerm_public_ip.dbip
+  ]
+}
+
+resource "azurerm_public_ip" "dbip" {
+  name                = "db-ip"
+  resource_group_name = local.resource_group_name
+  location            = local.location
+  allocation_method   = "Static"
+  depends_on = [
+    azurerm_resource_group.appgrp
+  ]
+}
+
+
+resource "azurerm_windows_virtual_machine" "dbvm" {
+  name                = "dbvm"
+  resource_group_name = local.resource_group_name
+  location            = local.location
+  size                = "Standard_D2s_v3"
+  admin_username      = "dbuser"
+  admin_password      = "Azure@123"
+  network_interface_ids = [
+    azurerm_network_interface.dbinterface.id
+  ]
+
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
+  }
+
+  source_image_reference {
+    publisher = "MicrosoftSQLServer"
+    offer     = "sql2019-ws2019"
+    sku       = "sqldev"
+    version   = "15.0.220510"
+  }
+
+
+  depends_on = [
+    azurerm_virtual_network.appnetwork,
+    azurerm_network_interface.dbinterface
+  ]
+}
+
+
+resource "azurerm_mssql_virtual_machine" "mssqlmachine" {
+  virtual_machine_id = azurerm_windows_virtual_machine.dbvm.id
+  sql_license_type   = "PAYG"
+}
+
+
+provider.tf
+===========
+terraform {
+  required_providers {
+    azurerm = {
+      source = "hashicorp/azurerm"
+      version = "3.57.0"
+    }
+  }
+}
+
+provider "azurerm" {
+  subscription_id = "XXXXX"
+  tenant_id = "XXXXX"
+  client_id = "XXXXX"
+  client_secret = "XXXXX"
+  features {}
+}
+
+
+main.tf
+=======
+resource "azurerm_resource_group" "appgrp" {
+  name     = local.resource_group_name
+  location = local.location
+}
+
+locals.tf
+==========
+locals {
+  resource_group_name="app-grp"
+  location="Central India"
+
+  virtual_network={
+    name="app-network"
+    address_space="10.0.0.0/16"
+  }
+}
+
+
+commands.ps1
+============
+Connect-AzAccount
+
+$location="North Europe"
+$PublisherName="MicrosoftSQLServer"
+Get-AzVMImageOffer -Location $location -PublisherName $PublisherName | Select Offer
+
+
+$offerName="sql2019-ws2019"
+Get-AzVMImageSku -Location $location -PublisherName $PublisherName -Offer $offerName | Select Skus
+
+
+$skuName="sqldev"
+Get-AzVMImage -Location $location  -PublisherName $PublisherName -Offer $offerName -Sku $skuName | Select Version
+
+
+$Version="15.0.220510"

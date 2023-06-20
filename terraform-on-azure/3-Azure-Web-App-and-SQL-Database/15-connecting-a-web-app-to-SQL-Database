@@ -1,0 +1,233 @@
+In Last section we have seen, how to seed a database i.e. how to create a Table and insert data in SQL database.
+
+In this Section we will see:
+1. How an Application Code (deployed in a Azure Web App) can connect to SQL database
+2. And then fetch that data from the SQL database
+
+We have a GH Repo which an Application Code by developers - https://github.com/myorg2020/sqlapp
+This code has ability to connect to the SQL Database and fetch the data from the SQL Database.
+https://github.com/myorg2020/sqlapp/blob/main/sqlapp/Services/ProductService.cs#L18
+In Line 18 of this code - It has "SQLConnection" string defined in the code
+"return new SqlConnection(_configuration.GetConnectionString("SQLConnection"));"
+
+1.
+First we create App service plan, Web App and then deploy this code in the Azure Web App & connect to Azure SQL database.
+see file "webapp.tf", we have added a block connection_string in this file. Mark the Name as "SQLConnection".
+Since in Application code as shown above the conection string name is "SQLConnection", hence in webapp.tf also
+we need to give same name. If this connection string name changes in Application code, same has to be changed in webapp.tf
+as well.
+
+connection_string {
+  name = "SQLConnection"
+  type = "SQLAzure"
+  value = "Data Source=tcp:${azurerm_mssql_server.sqlserver.fully_qualified_domain_name},1433;Initial Catalog=${azurerm_mssql_database.appdb.name};User Id=${azurerm_mssql_server.sqlserver.administrator_login};Password='${azurerm_mssql_server.sqlserver.administrator_login_password}';"
+}
+
+2.
+And in sqldatabase.tf we have ability to create:
+1. Azure SQL Server
+2. Azure SQL Database
+3. Allow workstation/laptop client to conect to SQL Server in Firewall.
+4. Allow Azure web app (created using webapp.tf) to conect to SQL Server in Firewall -> This is new here.
+
+resource "azurerm_mssql_firewall_rule" "allowservices" {
+  name             = "AllowAzureServices"
+  server_id        = azurerm_mssql_server.sqlserver.id
+  start_ip_address = "0.0.0.0"
+  end_ip_address   = "0.0.0.0"
+  depends_on = [
+    azurerm_mssql_server.sqlserver
+  ]
+}
+
+3.
+seeddatabase.tf -> has ability to create a table in SQL database and insert data into it in Rows and coloumns.
+
+4.
+Remember, Make Sure to Add "SQL Server" Password which we have added in file "sqldatabase.tf"
+in Env variable. i.e.
+export SQLCMDPASSWORD=Azure@3456
+echo $SQLCMDPASSWORD
+
+Then Run Plan and Apply.
+
+5.
+Once it's done, Go to Azure Portal -> web App -> Overview page , take URL from Default domain.
+Open this URL in Browser: companyapp089920235550.azurewebsites.net
+
+we will get the web Page and see the data on screen, the data which has been inserted in SQL Database.
+
+So, here is the flow what has happened here:
+  I. SQL Server is created
+  II. SQL database is created
+  III. Table and data been created in SQL Databse
+  IV. Web App "Service plan" is created
+  V. Then "web App" is created by taking the code (sqlapp) from GH and connected to SQL database.
+
+So thats why when when we browse the web App URL, it fetches the data from database and shows on Screen.
+
+webapp.tf
+=========
+resource "azurerm_service_plan" "companyplan" {
+  name                = "companyplan"
+  resource_group_name = local.resource_group_name
+  location            = local.location
+  os_type             = "Windows"
+  sku_name            = "B1"
+  depends_on = [
+    azurerm_resource_group.appgrp
+   ]
+}
+
+resource "azurerm_windows_web_app" "companyapp089920235550" {
+  name                = "companyapp089920235550"
+  resource_group_name = local.resource_group_name
+  location            = local.location
+  service_plan_id     = azurerm_service_plan.companyplan.id
+
+  site_config {
+    application_stack {
+      current_stack="dotnet"
+      dotnet_version="v6.0"
+    }
+  }
+
+connection_string {
+  name = "SQLConnection"
+  type = "SQLAzure"
+  value = "Data Source=tcp:${azurerm_mssql_server.sqlserver.fully_qualified_domain_name},1433;Initial Catalog=${azurerm_mssql_database.appdb.name};User Id=${azurerm_mssql_server.sqlserver.administrator_login};Password='${azurerm_mssql_server.sqlserver.administrator_login_password}';"
+}
+
+  depends_on = [
+    azurerm_service_plan.companyplan
+   ]
+}
+
+resource "azurerm_app_service_source_control" "appservice_sourcecontrol" {
+  app_id   = azurerm_windows_web_app.companyapp089920235550.id
+  repo_url = "https://github.com/myorg2020/sqlapp"
+  branch   = "main"
+  use_manual_integration = true
+  depends_on = [
+    azurerm_windows_web_app.companyapp089920235550
+   ]
+}
+
+
+sqldatabase.tf
+==============
+resource "azurerm_mssql_server" "sqlserver" {
+  name                         = "sqlserver8992023555"
+  resource_group_name          = local.resource_group_name
+  location                     = local.location
+  version                      = "12.0"
+  administrator_login          = "sqladmin"
+  administrator_login_password = "Azure@3456"
+  depends_on = [
+    azurerm_resource_group.appgrp
+  ]
+}
+
+resource "azurerm_mssql_database" "appdb" {
+  name           = "appdb"
+  server_id      = azurerm_mssql_server.sqlserver.id
+  collation      = "SQL_Latin1_General_CP1_CI_AS"
+  license_type   = "LicenseIncluded"
+  max_size_gb    = 2
+  sku_name       = "S0"
+
+ lifecycle {
+    ignore_changes = [
+      license_type
+    ]
+  }
+
+  depends_on = [
+    azurerm_mssql_server.sqlserver
+      ]
+}
+
+resource "azurerm_mssql_firewall_rule" "allowmyclient" {
+  name             = "AllowClientIP"
+  server_id        = azurerm_mssql_server.sqlserver.id
+  start_ip_address = "49.205.35.192"
+  end_ip_address   = "49.205.35.192"
+  depends_on = [
+    azurerm_mssql_server.sqlserver
+  ]
+}
+
+resource "azurerm_mssql_firewall_rule" "allowservices" {
+  name             = "AllowAzureServices"
+  server_id        = azurerm_mssql_server.sqlserver.id
+  start_ip_address = "0.0.0.0"
+  end_ip_address   = "0.0.0.0"
+  depends_on = [
+    azurerm_mssql_server.sqlserver
+  ]
+}
+
+
+seeddatabase.tf
+===============
+resource "null_resource" "database_setup" {
+  provisioner "local-exec" {
+      command = "sqlcmd -S ${azurerm_mssql_server.sqlserver.fully_qualified_domain_name} -U ${azurerm_mssql_server.sqlserver.administrator_login} -d appdb -i 01.sql"
+  }
+  depends_on=[
+    azurerm_mssql_database.appdb
+  ]
+}
+
+
+provider.tf
+===========
+terraform {
+  required_providers {
+    azurerm = {
+      source = "hashicorp/azurerm"
+      version = "3.57.0"
+    }
+  }
+}
+
+provider "azurerm" {
+  subscription_id = "XXXXX"
+  tenant_id = "XXXXX"
+  client_id = "XXXXX"
+  client_secret = "XXXXX"
+  features {}
+}
+
+
+main.tf
+========
+resource "azurerm_resource_group" "appgrp" {
+  name     = local.resource_group_name
+  location = local.location
+}
+
+
+locals.tf
+=========
+locals {
+  resource_group_name="app-grp"
+  location="Central India"
+}
+
+
+01.sql
+======
+CREATE TABLE Products
+(
+     ProductID int,
+     ProductName varchar(1000),
+     Quantity int
+)
+
+
+INSERT INTO Products(ProductID,ProductName,Quantity) VALUES (1,'Mobile',100)
+
+INSERT INTO Products(ProductID,ProductName,Quantity) VALUES (2,'Laptop',200)
+
+INSERT INTO Products(ProductID,ProductName,Quantity) VALUES (3,'Tabs',300)

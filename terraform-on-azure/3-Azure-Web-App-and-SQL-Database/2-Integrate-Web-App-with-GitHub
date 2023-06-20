@@ -1,0 +1,90 @@
+Once as we have Web App Created Successfully, in last section. It's an just a default Page which is Running.
+We need to deploy a Real Application on top of this web App which is of .Net Application.
+
+we have an application in GH:
+https://github.com/myorg2020/webapp
+
+Let's Integrate this webapp Application from Github with Azure Web App. In this GH webapp in the file - webapp/Pages/Index.cshtml
+we have web content as "Using Azure Web Apps". So, once this GH webapp is integrated with Azure Web Apps, we should be able to see
+the web Page content as "Using Azure Web Apps".
+
+Use below files to integrate GH webapp with Azure Web Apps.
+once completed then go to Azure Web App and in overview page look for "Default domain".
+We will get something like: companyapp00110000.azurewebsites.net
+Browse this in browser, we will see web Page content as "Using Azure Web Apps".
+
+webapp.tf
+=========
+resource "azurerm_service_plan" "companyplan" {
+  name                = "companyplan"
+  resource_group_name = local.resource_group_name
+  location            = local.location
+  os_type             = "Windows"
+  sku_name            = "B1"
+  depends_on = [
+    azurerm_resource_group.appgrp
+   ]
+}
+
+resource "azurerm_windows_web_app" "companyapp00110000" {
+  name                = "companyapp00110000"
+  resource_group_name = local.resource_group_name
+  location            = local.location
+  service_plan_id     = azurerm_service_plan.companyplan.id
+
+  site_config {
+    application_stack {
+      current_stack="dotnet"
+      dotnet_version="v6.0"
+    }
+  }
+  depends_on = [
+    azurerm_service_plan.companyplan
+   ]
+}
+
+resource "azurerm_app_service_source_control" "appservice_sourcecontrol" {
+  app_id   = azurerm_windows_web_app.companyapp00110000.id
+  repo_url = "https://github.com/myorg2020/webapp"
+  branch   = "main"
+  use_manual_integration = true
+  depends_on = [
+    azurerm_windows_web_app.companyapp00110000
+   ]
+}
+
+
+provider.tf
+===========
+terraform {
+  required_providers {
+    azurerm = {
+      source = "hashicorp/azurerm"
+      version = "3.57.0"
+    }
+  }
+}
+
+provider "azurerm" {
+  subscription_id = "XXXXX"
+  tenant_id = "XXXXX"
+  client_id = "XXXXX"
+  client_secret = "XXXXX"
+  features {}
+}
+
+
+main.tf
+=======
+resource "azurerm_resource_group" "appgrp" {
+  name     = local.resource_group_name
+  location = local.location
+}
+
+
+locals.tf
+=========
+locals {
+  resource_group_name="app-grp"
+  location="Central India"
+}

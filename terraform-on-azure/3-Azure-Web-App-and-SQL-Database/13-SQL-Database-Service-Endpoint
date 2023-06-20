@@ -1,0 +1,139 @@
+In section "8-Azure-SQL-Database-Firewall-Rules" we have seen how to connect to or allow connectivity to SQL Database server
+from our client IP, means from our laptop/workstation.
+
+Now Suppose if you a VM in a Vnet on Azure , so how would you connect to SQL Database from that VM.
+By Default there is Firewall in place. So we need to Enable that connectivity. So for that purpose we can create
+a Service Endpoint for the subnet in the Virtual Network holding that VM and then add this endpoint in SQL Database Server.
+
+1.
+So, first create below 2 using below files:
+SQL Database Server
+SQL Database
+
+we will have these 2 resources created in RG "app-grp".
+
+sqldatabase.tf
+==============
+resource "azurerm_mssql_server" "sqlserver" {
+  name                         = "sqlserver32029906055400"
+  resource_group_name          = local.resource_group_name
+  location                     = local.location
+  version                      = "12.0"
+  administrator_login          = "sqladmin"
+  administrator_login_password = "Azure@1234"
+  depends_on = [
+    azurerm_resource_group.appgrp
+   ]
+
+}
+
+resource "azurerm_mssql_database" "appdb" {
+  name           = "appdb"
+  server_id      = azurerm_mssql_server.sqlserver.id
+  collation      = "SQL_Latin1_General_CP1_CI_AS"
+  license_type   = "LicenseIncluded"
+  max_size_gb    = 2
+  sku_name       = "Basic"
+
+  depends_on = [
+    azurerm_mssql_server.sqlserver
+   ]
+}
+
+
+provider.tf
+===========
+terraform {
+  required_providers {
+    azurerm = {
+      source = "hashicorp/azurerm"
+      version = "3.57.0"
+    }
+  }
+}
+
+provider "azurerm" {
+  subscription_id = "XXXXX"
+  tenant_id = "XXXXX"
+  client_id = "XXXXX"
+  client_secret = "XXXXX"
+  features {}
+}
+
+main.tf
+=======
+resource "azurerm_resource_group" "appgrp" {
+  name     = local.resource_group_name
+  location = local.location
+}
+
+
+locals.tf
+=========
+locals {
+  resource_group_name="app-grp"
+  location="Central India"
+}
+
+
+2.
+Now create a VM in a new RG "new-grp".
+GO to that VM and Install SQL Server Management Studio. Try to connect to the SQL Database server from that
+which we have created in step1, it won't allow to connect becoz by default Firewall will not Allow that.
+
+
+3. To Allow that we need to do this. create this new file and add:
+
+* "azurerm_subnet" -> If You go to VM created in step2, In overview we will see this "Virtual network/subnet"
+   it's showing as "appvm-vnet/default", so it means a Virtual network & a subnet name "default" was created while creating VM.
+   So name we give as "default". we have create this VM in a new RG "new-grp".
+   Go to the virtual Network "appvm-vnet" which got created while creating VM, go to Subnets so we see name as "default"
+   and IPv4 as "10.0.0.0/24". using "service_endpoints" we create a service end point for the subnet in Virtual Network holding the VM.
+
+* "azurerm_mssql_virtual_network_rule" -> Using this we Assing the service endpoint to the SQL database server.
+
+Take all the files from point #1 and create it. while Running Apply we will get an Error that "/subscriptions/e3ee3ee2-119e-453a-a958-b8e385c680e0/resourceGroups/new-grp/providers/Microsoft.Network/virtualNetworks/appvm-vnet/subnets/default"
+Alraedy exists. It's becoz we have created that VM Manually (a Vnet, Subnet got created i.e. default).
+And in out file "serviceendpoint.tf" we are mentioning "default" Subnet. So since this was created outside of Terraform
+so we need to import this to Terraform state file so that Terraform Manages it.
+
+So run:
+=> terraform import resource_type.resource_name "resource" (Syntax)
+terraform import azurerm_subnet.default /subscriptions/e3ee3ee2-119e-453a-a958-b8e385c680e0/resourceGroups/new-grp/providers/Microsoft.Network/virtualNetworks/appvm-vnet/subnets/default
+
+Then Again Run Plan and Apply. Now to go VM and connect to SQL Database using SSMS, we can connect Now.
+
+we will also see service endpoint got created in Virtaul Network. GO to the Virtaul Network -> service Endpoint
+Now Go to SQL Server -> Networking -> we see Under Virtual networks a Rule has got created
+
+serviceendpoint.tf
+==================
+resource "azurerm_subnet" "default" {
+  name                 = "default"
+  resource_group_name  = "new-grp"
+  virtual_network_name = "appvm-vnet"
+  address_prefixes = ["10.0.0.0/24"]
+  service_endpoints = ["Microsoft.sql"]
+  depends_on = [
+    azurerm_resource_group.appgrp
+   ]
+}
+
+resource "azurerm_mssql_virtual_network_rule" "virtualnetworkrule" {
+  name      = "sql-vnet-rule"
+  server_id = azurerm_mssql_server.sqlserver.id
+  subnet_id = azurerm_subnet.default.id
+}
+
+4.
+Now while destroying the Resources Suppose if we do "terraform destroy". It will destroy all Resources.
+But Suppose we want our VM to be not destroyed as it was created Manually in a diff RG and we want that to not destroyed.
+So Remember in point #3 we did "terraform import" to add that VM to state file to be Managed by Terraform.
+Hence now we need to remove that from Terraform state file.
+
+=> terraform state rm resource_type.resource_name (Syntax)
+⇒  terraform state rm azurerm_subnet.default
+Removed azurerm_subnet.default
+Successfully removed 1 resource instance(s).
+
+And then do "terraform destroy"
