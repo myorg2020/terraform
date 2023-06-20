@@ -239,7 +239,7 @@ resource "azurerm_subnet_network_security_group_association" "dbnsg-link" {
 
 
 provider.tf
-===========
+============
 terraform {
   required_providers {
     azurerm = {
