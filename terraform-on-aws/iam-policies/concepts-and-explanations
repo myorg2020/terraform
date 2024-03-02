@@ -64,6 +64,6 @@ resource "aws_iam_user_policy_attachment" "lucy-admin-access" {
 
 
 For the resource "aws_iam_policy" there is another way also to pass the json value. Like Below.
-1. create a file admin-policy.json and add the json data in to it.
-2. In main.tf file call this file using "file" built-in fucntion in Policy argument.
+1. create a file admin-policy.json and add the json data into it.
+2. In main.tf file call this file using "file" built-in function in Policy argument.
     policy      = file("admin-policy.json")
