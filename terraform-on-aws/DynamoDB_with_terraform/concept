@@ -1,0 +1,30 @@
+1. DynamoDB is "NoSQL Database" Provided by aws.
+2. It is "Highly Scalable" database that can cope up with millions of Apps i.e. mobile, web, gaming and IOT.
+3. "Fully Managed by AWS" - means users no need to manage any servers or DB upgrade, Patching, software installations.
+4. It also Provides Low Latency data Access ("Single-Digit MilliSecond Latency") making it a very popular choice for some
+   of the world's largest scale Applications.
+5. DynamoDB also gurantees high Availability as data is Replicated across multiple AWS Regions ("Data replicated across regions").
+6. As it's NoSQL database, it means it stores data in the form of "key:value" pairs and documents.
+
+For example:
+Suppose We want to store data about cars. Car may have some data like "Manufacturer", "Model", "Make Year" and "VIN (Vehicle
+identification number)" etc.
+
+Except VIN all other properties like Manufacturer, Model and Make Year may be same for 2 or more cars.
+
+But VIN (Vehicle identification number) will Always be Unique to cars.
+
+So we need to declarate VIN as Primary Key and Required argument for creating a DynamoDB table, Rest can be optionals.
+
+Another example:
+Suppose we want to store data about a company's employees.
+
+An employee can have name, Age, role and employee_id. Except employee_id other attributes can be similar.
+So here we can make employee_id as Primary key for employee Databse.
+
+
+main.tf
+=======
+resource "aws_dynamodb_table" -> To create table
+
+resource "aws_dynamodb_table_item" -> To add data/items to the table

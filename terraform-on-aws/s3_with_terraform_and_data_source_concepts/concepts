@@ -1,0 +1,22 @@
+1. In this tutorial we are creating a s3 bucket using resource "aws_s3_bucket".
+   Remember, bucket name should be unique even with 2 different accounts also.
+
+2. using "aws_s3_object" uploads an object "finance-2020.txt" created locally in s3 bucket.
+
+3. Now suppose there is a user's group "finance-analysts" and need to assign permission to this group to access
+   the bucket, created as per point #1.
+
+4. Here we will learn the concept of "data source". Suppose if there is any resource which is created outside of terrafrom
+   i.e. manually or created by some other means but noy by our terraform configuration script. So there is a way to
+   include this in our terraform state file. Becoz our terraform state file is not aware about this resource as it was created
+   manually earlier. So Suppose user's group "finance-analysts" is created in IAM manually. So using below code
+   we can make terraform aware of this user's group "finance-analysts".
+
+   data "aws_iam_group" "finance-data"{
+     group_name = "finance-analysts"
+   }
+
+   So now terraform state file is having information about this resource.
+
+5. Now using resource "aws_s3_bucket_policy" we have to create a Policy and assign the permission for user's group "finance-analysts"
+   to s3 bucket.
