@@ -14,13 +14,13 @@ Except VIN all other properties like Manufacturer, Model and Make Year may be sa
 
 But VIN (Vehicle identification number) will Always be Unique to cars.
 
-So we need to declarate VIN as Primary Key and Required argument for creating a DynamoDB table, Rest can be optionals.
+So we need to declarate VIN as Primary Key as "Required" argument for creating a DynamoDB table, Rest can be optionals.
 
 Another example:
 Suppose we want to store data about a company's employees.
 
 An employee can have name, Age, role and employee_id. Except employee_id other attributes can be similar.
-So here we can make employee_id as Primary key for employee Databse.
+So here we can make "employee_id" as Primary key as "Required" argument for creating a DynamoDB table, Rest can be optionals.
 
 
 main.tf
