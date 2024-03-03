@@ -7,7 +7,7 @@
    the bucket, created as per point #1.
 
 4. Here we will learn the concept of "data source". Suppose if there is any resource which is created outside of terrafrom
-   i.e. manually or created by some other means but noy by our terraform configuration script. So there is a way to
+   i.e. manually or created by some other means but not by our terraform configuration script. So there is a way to
    include this in our terraform state file. Becoz our terraform state file is not aware about this resource as it was created
    manually earlier. So Suppose user's group "finance-analysts" is created in IAM manually. So using below code
    we can make terraform aware of this user's group "finance-analysts".
