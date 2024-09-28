@@ -1,4 +1,4 @@
-resource "aws_dynamodb_table" "cars" {
+resource "aws_dynamodb_table" "cars2" {
   name = "cars"
   hash_key = "VIN"
   billing_mode = "PAY_PER_REQUEST"
